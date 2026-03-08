@@ -156,7 +156,7 @@ hr { border-color: rgba(255,255,255,0.1) !important; }
 st.markdown("# 🎯 OPIC Master")
 st.markdown("<p style='color:#94a3b8; margin-top:-10px; margin-bottom:20px;'>OPIC IH/AL을 향한 스마트 플래시카드</p>", unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["✦ 표현 배우기", "📂 내 단어장", "🎮 플래시카드 게임"])
+tab1, tab2, tab3, tab4 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "📂 내 단어장", "🎮 플래시카드 게임"])
 
 # --- 3. 탭 1: 핵심 표현 추출 ---
 with tab1:
@@ -233,8 +233,81 @@ with tab1:
                             st.session_state['saved_flags'][i] = True
                             st.rerun()
 
-# --- 4. 탭 2: 내 단어장 ---
+# --- 4. 탭 2: 검색하기 ---
 with tab2:
+    st.markdown("### 표현 검색하기")
+    st.markdown("<p style='color:#94a3b8; margin-top:-10px;'>단어나 표현을 검색하면 OPIC IH/AL 수준의 예문과 의미를 알려드려요.</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    search_word = st.text_input("검색할 표현을 입력하세요", placeholder="예: burn out, go the extra mile, savage...")
+
+    if st.button("검색", key="search_btn"):
+        if search_word.strip():
+            with st.spinner(f"'{search_word}' 검색 중..."):
+                search_prompt = f"""
+                너는 OPIC IH/AL을 목표로 하는 한국인에게 영어 표현을 가르치는 원어민 강사야.
+                검색 표현: "{search_word}"
+
+                이 표현에 대해 아래를 제공해줘:
+                1. 이 표현의 핵심 뜻 (한국어, 슬랭이면 뉘앙스까지)
+                2. 이 표현을 다양한 의미/상황으로 사용한 예문 4개. 각각:
+                   - 영어 예문 (OPIC 답변에서 바로 쓸 수 있는 수준)
+                   - 이 문장에서 쓰인 의미 (한국어, 짧게)
+                   - 유사 표현 (영어, 1개)
+                3. 마지막에 반드시 [DATA] 구분자 후 JSON 출력:
+                {{"word": "표현", "meaning": "핵심뜻(한국어)", "examples": [{{"sentence": "영어예문", "sentence_meaning": "한국어의미", "synonym": "유사표현"}}]}}
+                """
+                try:
+                    resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": search_prompt}]
+                    )
+                    full = resp.choices[0].message.content
+                    json_part = full.split("[DATA]")[1].strip()
+                    json_part = json_part.replace("```json", "").replace("```", "").strip()
+                    result = json.loads(json_part)
+                    st.session_state['search_result'] = result
+                    st.session_state['search_saved'] = [False] * len(result['examples'])
+                except Exception as e:
+                    st.error(f"오류가 발생했습니다: {e}")
+        else:
+            st.warning("표현을 입력해주세요.")
+
+    if 'search_result' in st.session_state:
+        result = st.session_state['search_result']
+        st.divider()
+
+        st.markdown(f"<h3 style='color:#e2e8f0;'>{result['word']}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#a78bfa; font-weight:600;'>핵심 뜻</span> <span style='color:#e2e8f0;'>{result['meaning']}</span>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        for i, ex in enumerate(result['examples']):
+            with st.container(border=True):
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.info(f"**예문:** {ex['sentence']}\n\n*{ex['sentence_meaning']}*")
+                    st.markdown(f"<span style='color:#60a5fa; font-size:0.9rem;'>유사표현 ›</span> <span style='color:#cbd5e1; font-size:0.9rem;'>{ex['synonym']}</span>", unsafe_allow_html=True)
+                with col2:
+                    if st.session_state['search_saved'][i]:
+                        st.markdown("<div style='text-align:center; color:#34d399; font-size:1.5rem; padding-top:20px;'>✓</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("저장", key=f"search_save_{i}"):
+                            db.collection('opic_cards').add({
+                                'topic': f"검색: {result['word']}",
+                                'word': result['word'],
+                                'meaning': result['meaning'],
+                                'sentence': ex['sentence'],
+                                'sentence_meaning': ex['sentence_meaning'],
+                                'synonym_sentence': ex['synonym'],
+                                'created_at': firestore.SERVER_TIMESTAMP,
+                                'review_flagged_at': None
+                            })
+                            st.session_state['search_saved'][i] = True
+                            st.rerun()
+
+# --- 5. 탭 3: 내 단어장 ---
+with tab3:
     st.markdown("### 저장된 단어장")
     cards_ref = db.collection('opic_cards').order_by('created_at', direction=firestore.Query.DESCENDING).stream()
     cards_list = [{'id': doc.id, **doc.to_dict()} for doc in cards_ref]
@@ -323,8 +396,8 @@ with tab2:
                         db.collection('opic_cards').document(c['id']).delete()
                         st.rerun()
 
-# --- 5. 탭 3: 플래시카드 게임 ---
-with tab3:
+# --- 6. 탭 4: 플래시카드 게임 ---
+with tab4:
     cards_ref2 = db.collection('opic_cards').stream()
     all_cards = [{'id': doc.id, **doc.to_dict()} for doc in cards_ref2]
 
