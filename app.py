@@ -34,16 +34,29 @@ def get_review_style(review_flagged_at):
         pass
     return None
 
-def is_recently_known(known_at):
-    """알았어! 처리한 지 48시간 이내이면 True"""
+def is_recently_known(known_at, review_flagged_at=None):
+    """
+    알았어! 처리한 지 48시간 이내인 카드를 제외.
+    단, 같은 턴에서 다시볼게(review_flagged_at)가 알았어!(known_at)보다
+    나중에 찍혔다면 다음 턴에 반드시 포함.
+    """
     if known_at is None:
         return False
     try:
         now = datetime.now(timezone.utc)
-        dt = known_at
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return (now - dt).total_seconds() / 3600 <= 48
+        dt_known = known_at
+        if dt_known.tzinfo is None:
+            dt_known = dt_known.replace(tzinfo=timezone.utc)
+        if (now - dt_known).total_seconds() / 3600 > 48:
+            return False
+        # 다시볼게가 알았어! 이후에 기록됐으면 → 다음 턴 포함
+        if review_flagged_at is not None:
+            dt_review = review_flagged_at
+            if dt_review.tzinfo is None:
+                dt_review = dt_review.replace(tzinfo=timezone.utc)
+            if dt_review > dt_known:
+                return False
+        return True
     except Exception:
         return False
 
@@ -410,7 +423,7 @@ with tab4:
             if not st.session_state.get('game_active', False):
                 st.markdown(f"<p style='text-align:center; color:#94a3b8;'>저장된 카드 {len(all_cards)}개</p>", unsafe_allow_html=True)
                 if st.button("게임 시작", use_container_width=True):
-                    deck = [c for c in all_cards if not is_recently_known(c.get('known_at'))]
+                    deck = [c for c in all_cards if not is_recently_known(c.get('known_at'), c.get('review_flagged_at'))]
                     random.shuffle(deck)
                     st.session_state['game_deck'] = deck
                     st.session_state['game_idx'] = 0
