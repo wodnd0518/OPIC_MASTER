@@ -27,12 +27,25 @@ def get_review_style(review_flagged_at):
             dt = dt.replace(tzinfo=timezone.utc)
         hours_ago = (now - dt).total_seconds() / 3600
         if hours_ago <= 24:
-            return 'deep'    # 첫째날: 진한 주황
+            return 'deep'
         elif hours_ago <= 48:
-            return 'light'   # 둘째날: 흐린 주황
+            return 'light'
     except Exception:
         pass
     return None
+
+def is_recently_known(known_at):
+    """알았어! 처리한 지 48시간 이내이면 True"""
+    if known_at is None:
+        return False
+    try:
+        now = datetime.now(timezone.utc)
+        dt = known_at
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (now - dt).total_seconds() / 3600 <= 48
+    except Exception:
+        return False
 
 # --- 2. UI 레이아웃 ---
 st.set_page_config(page_title="OPIC Master", layout="wide", page_icon="🎯")
@@ -272,9 +285,43 @@ with tab2:
                 st.info(f"**예문:** {c['sentence']}\n\n*{c.get('sentence_meaning', '')}*")
                 st.markdown(f"<span style='color:#60a5fa; font-size:0.9rem;'>유사표현 ›</span> <span style='color:#cbd5e1; font-size:0.9rem;'>{c.get('synonym_sentence', '')}</span>", unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("삭제", key=f"del_{c['id']}"):
-                    db.collection('opic_cards').document(c['id']).delete()
-                    st.rerun()
+                # 다른 예문 보기 버튼
+                btn_col, del_col = st.columns([3, 1])
+                with btn_col:
+                    extra_key = f"extra_{c['id']}"
+                    if st.button("다른 예문 보기", key=f"more_{c['id']}"):
+                        if extra_key not in st.session_state:
+                            with st.spinner("예문 생성 중..."):
+                                extra_prompt = f"""
+                                영어 표현 "{c['word']}"을 다양한 의미/상황으로 사용한 예문 3개를 알려줘.
+                                각각 이 표현이 이 문장에서 어떤 뜻으로 쓰였는지 한국어로 짧게 설명해줘.
+                                JSON 형식으로만 출력해줘:
+                                [{{"sentence": "영어예문", "meaning": "이 문장에서의 뜻(한국어)"}}]
+                                """
+                                resp = client.chat.completions.create(
+                                    model="gpt-4o-mini",
+                                    messages=[{"role": "user", "content": extra_prompt}]
+                                )
+                                raw = resp.choices[0].message.content.strip()
+                                raw = raw.replace("```json", "").replace("```", "").strip()
+                                st.session_state[extra_key] = json.loads(raw)
+                        st.rerun()
+
+                    if extra_key in st.session_state:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:#a78bfa; font-size:0.85rem; font-weight:600;'>다양한 예문</span>", unsafe_allow_html=True)
+                        for ex in st.session_state[extra_key]:
+                            st.markdown(
+                                f"<div style='margin:6px 0; padding:8px 12px; background:rgba(124,58,237,0.1); border-left:3px solid #7c3aed; border-radius:6px;'>"
+                                f"<span style='color:#e2e8f0; font-size:0.9rem;'>{ex['sentence']}</span>"
+                                f"<br><span style='color:#94a3b8; font-size:0.8rem;'>{ex['meaning']}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True
+                            )
+                with del_col:
+                    if st.button("삭제", key=f"del_{c['id']}"):
+                        db.collection('opic_cards').document(c['id']).delete()
+                        st.rerun()
 
 # --- 5. 탭 3: 플래시카드 게임 ---
 with tab3:
@@ -290,7 +337,7 @@ with tab3:
             if not st.session_state.get('game_active', False):
                 st.markdown(f"<p style='text-align:center; color:#94a3b8;'>저장된 카드 {len(all_cards)}개</p>", unsafe_allow_html=True)
                 if st.button("게임 시작", use_container_width=True):
-                    deck = all_cards.copy()
+                    deck = [c for c in all_cards if not is_recently_known(c.get('known_at'))]
                     random.shuffle(deck)
                     st.session_state['game_deck'] = deck
                     st.session_state['game_idx'] = 0
@@ -352,6 +399,9 @@ with tab3:
                             c1, c2 = st.columns(2)
                             with c1:
                                 if st.button("✅  알았어!", use_container_width=True):
+                                    db.collection('opic_cards').document(card['id']).update({
+                                        'known_at': firestore.SERVER_TIMESTAMP
+                                    })
                                     deck.pop(idx)
                                     st.session_state['game_deck'] = deck
                                     if len(deck) > 0:
