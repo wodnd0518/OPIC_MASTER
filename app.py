@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 
 # --- 1. 초기 설정 (Firebase & OpenAI) ---
 if not firebase_admin._apps:
@@ -59,6 +59,98 @@ def is_recently_known(known_at, review_flagged_at=None):
         return True
     except Exception:
         return False
+
+KST = timezone(timedelta(hours=9))
+
+def get_today_kst():
+    return datetime.now(KST).date()
+
+def record_activity():
+    """액션 발생 시 스트릭 갱신. 오늘 이미 기록됐으면 스킵."""
+    today = str(get_today_kst())
+    doc_ref = db.collection('user_data').document('streak')
+    doc = doc_ref.get()
+    data = doc.to_dict() if doc.exists else {}
+
+    activity_dates = data.get('activity_dates', [])
+    if today in activity_dates:
+        return  # 오늘 이미 기록됨
+
+    last_date_str = data.get('last_active_date')
+    streak = data.get('streak_count', 0)
+
+    if last_date_str is None:
+        streak = 1
+    else:
+        diff = (date.fromisoformat(today) - date.fromisoformat(last_date_str)).days
+        if diff == 1:
+            streak += 1
+        elif diff > 1:
+            streak = 1
+
+    activity_dates.append(today)
+    activity_dates = activity_dates[-60:]  # 최근 60일만 보관
+
+    doc_ref.set({
+        'streak_count': streak,
+        'last_active_date': today,
+        'activity_dates': activity_dates
+    })
+
+def render_streak():
+    """스트릭 위젯 렌더링."""
+    doc = db.collection('user_data').document('streak').get()
+    data = doc.to_dict() if doc.exists else {}
+
+    streak = data.get('streak_count', 0)
+    activity_dates = set(data.get('activity_dates', []))
+    today = get_today_kst()
+    monday = today - timedelta(days=today.weekday())
+    days_kr = ['월', '화', '수', '목', '금', '토', '일']
+
+    week_html = ""
+    for i in range(7):
+        day = monday + timedelta(days=i)
+        day_str = str(day)
+        is_today = (day == today)
+        is_active = day_str in activity_dates
+
+        if is_active:
+            circle = "<div style='width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:white;'>✓</div>"
+        elif is_today:
+            circle = "<div style='width:38px;height:38px;border-radius:50%;border:2px dashed #7c3aed;display:flex;align-items:center;justify-content:center;'></div>"
+        else:
+            circle = "<div style='width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;'></div>"
+
+        today_bg = "background:rgba(124,58,237,0.15);border-radius:10px;" if is_today else ""
+        week_html += f"<div style='display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 10px;{today_bg}'><span style='color:#94a3b8;font-size:0.8rem;font-weight:500;'>{days_kr[i]}</span>{circle}</div>"
+
+    if streak == 0:
+        fire = "🔥"
+        title = "아직 스트릭이 없어요"
+        sub = "오늘 첫 액션을 완료해보세요!"
+        fire_color = "#64748b"
+    else:
+        fire = "🔥"
+        title = f"{streak}일 연속 학습 중!"
+        sub = "오늘도 액션을 완료하면 불꽃이 유지돼요" if str(today) not in activity_dates else "오늘 학습 완료! 내일도 이어가요 💪"
+        fire_color = "#f97316"
+
+    st.markdown(f"""
+    <div style='background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
+                border-radius:16px;padding:16px 20px;margin-bottom:24px;'>
+        <div style='display:flex;align-items:center;gap:12px;margin-bottom:14px;'>
+            <span style='font-size:2rem;filter:drop-shadow(0 0 8px {fire_color});'>{fire}</span>
+            <div>
+                <div style='color:#e2e8f0;font-weight:700;font-size:1.15rem;'>{title}</div>
+                <div style='color:#94a3b8;font-size:0.8rem;'>{sub}</div>
+            </div>
+        </div>
+        <div style='display:flex;justify-content:space-around;'>
+            {week_html}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- 2. UI 레이아웃 ---
 st.set_page_config(page_title="OPIC Master", layout="wide", page_icon="🎯")
@@ -169,6 +261,8 @@ hr { border-color: rgba(255,255,255,0.1) !important; }
 st.markdown("# 🎯 OPIC Master")
 st.markdown("<p style='color:#94a3b8; margin-top:-10px; margin-bottom:20px;'>OPIC IH/AL을 향한 스마트 플래시카드</p>", unsafe_allow_html=True)
 
+render_streak()
+
 tab1, tab2, tab3, tab4 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "📂 내 단어장", "🎮 플래시카드 게임"])
 
 # --- 3. 탭 1: 핵심 표현 추출 ---
@@ -243,6 +337,7 @@ with tab1:
                                 'created_at': firestore.SERVER_TIMESTAMP,
                                 'review_flagged_at': None
                             })
+                            record_activity()
                             st.session_state['saved_flags'][i] = True
                             st.rerun()
 
@@ -281,6 +376,7 @@ with tab2:
                     result = json.loads(json_part)
                     st.session_state['search_result'] = result
                     st.session_state['search_saved'] = [False] * len(result['examples'])
+                    record_activity()
                 except Exception as e:
                     st.error(f"오류가 발생했습니다: {e}")
         else:
@@ -316,6 +412,7 @@ with tab2:
                                 'created_at': firestore.SERVER_TIMESTAMP,
                                 'review_flagged_at': None
                             })
+                            record_activity()
                             st.session_state['search_saved'][i] = True
                             st.rerun()
 
@@ -488,6 +585,7 @@ with tab4:
                                     db.collection('opic_cards').document(card['id']).update({
                                         'known_at': firestore.SERVER_TIMESTAMP
                                     })
+                                    record_activity()
                                     deck.pop(idx)
                                     st.session_state['game_deck'] = deck
                                     if len(deck) > 0:
@@ -496,10 +594,10 @@ with tab4:
                                     st.rerun()
                             with c2:
                                 if st.button("🔁  다시 볼게", use_container_width=True):
-                                    # Firebase에 복습 시각 기록
                                     db.collection('opic_cards').document(card['id']).update({
                                         'review_flagged_at': firestore.SERVER_TIMESTAMP
                                     })
+                                    record_activity()
                                     st.session_state['game_idx'] = (idx + 1) % len(deck)
                                     st.session_state['game_show_answer'] = False
                                     st.rerun()
