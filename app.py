@@ -286,21 +286,20 @@ with tab1:
             - 문장의 의미(sentence_meaning): 예문의 한국어 해석
             - 유사표현을 넣은 문장(synonym_sentence): 비슷한 표현을 사용한 영어 문장 1개
 
-            답변 마지막에 반드시 [DATA] 구분자를 쓰고 그 뒤에 아래 JSON 형식으로만 데이터를 출력해줘.
-
-            JSON 형식을 엄격히 지켜줘:
+            아래 JSON 형식으로만 응답해줘 (다른 텍스트 없이):
             {{"cards": [{{"word": "표현", "meaning": "한국어뜻", "sentence": "영어예문", "sentence_meaning": "예문한국어해석", "synonym_sentence": "유사표현활용문장"}}]}}
             """
 
             try:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[
+                        {"role": "system", "content": "You are a JSON-only response assistant. Always respond with valid JSON only, no markdown, no explanations."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    response_format={"type": "json_object"}
                 )
-                full_text = response.choices[0].message.content
-                json_part = full_text.split("[DATA]")[1].strip()
-                json_part = json_part.replace("```json", "").replace("```", "").strip()
-                cards_data = json.loads(json_part)
+                cards_data = json.loads(response.choices[0].message.content)
                 st.session_state['current_cards'] = cards_data['cards']
                 st.session_state['current_topic'] = topic
                 st.session_state['saved_flags'] = [False] * len(cards_data['cards'])
@@ -356,24 +355,26 @@ with tab2:
                 너는 OPIC IH/AL을 목표로 하는 한국인에게 영어 표현을 가르치는 원어민 강사야.
                 검색 표현: "{search_word}"
 
-                이 표현에 대해 아래를 제공해줘:
-                1. 이 표현의 핵심 뜻 (한국어, 슬랭이면 뉘앙스까지)
-                2. 이 표현을 다양한 의미/상황으로 사용한 예문 4개. 각각:
-                   - 영어 예문 (OPIC 답변에서 바로 쓸 수 있는 수준)
-                   - 이 문장에서 쓰인 의미 (한국어, 짧게)
-                   - 유사 표현 (영어, 1개)
-                3. 마지막에 반드시 [DATA] 구분자 후 JSON 출력:
+                아래 JSON 형식으로만 응답해줘 (다른 텍스트 없이):
+                - word: 검색한 표현
+                - meaning: 핵심 뜻 (한국어, 슬랭이면 뉘앙스까지)
+                - examples: 이 표현을 다양한 의미/상황으로 사용한 예문 4개. 각각:
+                  - sentence: 영어 예문 (OPIC 답변에서 바로 쓸 수 있는 수준)
+                  - sentence_meaning: 이 문장에서 쓰인 의미 (한국어, 짧게)
+                  - synonym: 유사 표현 (영어, 1개)
+
                 {{"word": "표현", "meaning": "핵심뜻(한국어)", "examples": [{{"sentence": "영어예문", "sentence_meaning": "한국어의미", "synonym": "유사표현"}}]}}
                 """
                 try:
                     resp = client.chat.completions.create(
                         model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": search_prompt}]
+                        messages=[
+                            {"role": "system", "content": "You are a JSON-only response assistant. Always respond with valid JSON only, no markdown, no explanations."},
+                            {"role": "user", "content": search_prompt}
+                        ],
+                        response_format={"type": "json_object"}
                     )
-                    full = resp.choices[0].message.content
-                    json_part = full.split("[DATA]")[1].strip()
-                    json_part = json_part.replace("```json", "").replace("```", "").strip()
-                    result = json.loads(json_part)
+                    result = json.loads(resp.choices[0].message.content)
                     st.session_state['search_result'] = result
                     st.session_state['search_saved'] = [False] * len(result['examples'])
                     record_activity()
