@@ -116,37 +116,40 @@ def render_streak():
         is_active = day_str in activity_dates
 
         if is_active:
-            circle = "<div style='width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:white;'>✓</div>"
+            circle = "<div style='width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:white;flex-shrink:0;'>✓</div>"
         elif is_today:
-            circle = "<div style='width:38px;height:38px;border-radius:50%;border:2px dashed #7c3aed;display:flex;align-items:center;justify-content:center;'></div>"
+            circle = "<div style='width:32px;height:32px;border-radius:50%;border:2px dashed #7c3aed;flex-shrink:0;'></div>"
         else:
-            circle = "<div style='width:38px;height:38px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;'></div>"
+            circle = "<div style='width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;'></div>"
 
-        today_bg = "background:rgba(124,58,237,0.15);border-radius:10px;" if is_today else ""
-        week_html += f"<div style='display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 10px;{today_bg}'><span style='color:#94a3b8;font-size:0.8rem;font-weight:500;'>{days_kr[i]}</span>{circle}</div>"
+        today_bg = "background:rgba(124,58,237,0.15);border-radius:8px;" if is_today else ""
+        week_html += (
+            f"<div style='display:flex;flex-direction:column;align-items:center;gap:4px;"
+            f"padding:5px 4px;flex:1;min-width:0;{today_bg}'>"
+            f"<span style='color:#94a3b8;font-size:0.7rem;font-weight:500;'>{days_kr[i]}</span>"
+            f"{circle}</div>"
+        )
 
     if streak == 0:
-        fire = "🔥"
         title = "아직 스트릭이 없어요"
         sub = "오늘 첫 액션을 완료해보세요!"
         fire_color = "#64748b"
     else:
-        fire = "🔥"
         title = f"{streak}일 연속 학습 중!"
-        sub = "오늘도 액션을 완료하면 불꽃이 유지돼요" if str(today) not in activity_dates else "오늘 학습 완료! 내일도 이어가요 💪"
+        sub = "오늘도 완료하면 유지돼요" if str(today) not in activity_dates else "오늘 완료! 내일도 이어가요 💪"
         fire_color = "#f97316"
 
     st.markdown(f"""
     <div style='background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
-                border-radius:16px;padding:16px 20px;margin-bottom:24px;'>
-        <div style='display:flex;align-items:center;gap:12px;margin-bottom:14px;'>
-            <span style='font-size:2rem;filter:drop-shadow(0 0 8px {fire_color});'>{fire}</span>
-            <div>
-                <div style='color:#e2e8f0;font-weight:700;font-size:1.15rem;'>{title}</div>
-                <div style='color:#94a3b8;font-size:0.8rem;'>{sub}</div>
+                border-radius:16px;padding:14px 16px;margin-bottom:24px;box-sizing:border-box;'>
+        <div style='display:flex;align-items:center;gap:10px;margin-bottom:12px;'>
+            <span style='font-size:1.7rem;line-height:1;filter:drop-shadow(0 0 8px {fire_color});flex-shrink:0;'>🔥</span>
+            <div style='min-width:0;'>
+                <div style='color:#e2e8f0;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{title}</div>
+                <div style='color:#94a3b8;font-size:0.75rem;'>{sub}</div>
             </div>
         </div>
-        <div style='display:flex;justify-content:space-around;'>
+        <div style='display:flex;justify-content:space-between;align-items:flex-end;width:100%;'>
             {week_html}
         </div>
     </div>
