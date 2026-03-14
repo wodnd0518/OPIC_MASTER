@@ -298,7 +298,7 @@ st.markdown("<p style='color:#94a3b8; margin-top:-10px; margin-bottom:20px;'>OPI
 
 render_streak()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "📂 내 단어장", "🎮 플래시카드 게임", "🤖 AI 질문"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "🤖 AI 질문", "📂 내 단어장", "🎮 플래시카드 게임"])
 
 # --- 3. 탭 1: 핵심 표현 추출 ---
 with tab1:
@@ -452,8 +452,8 @@ with tab2:
                             st.session_state['search_saved'][i] = True
                             st.rerun()
 
-# --- 5. 탭 3: 내 단어장 ---
-with tab3:
+# --- 5. 탭 4: 내 단어장 ---
+with tab4:
     st.markdown("### 저장된 단어장")
     cards_ref = db.collection('opic_cards').order_by('created_at', direction=firestore.Query.DESCENDING).stream()
     cards_list = [{'id': doc.id, **doc.to_dict()} for doc in cards_ref]
@@ -542,8 +542,8 @@ with tab3:
                         db.collection('opic_cards').document(c['id']).delete()
                         st.rerun()
 
-# --- 7. 탭 5: AI 질문 ---
-with tab5:
+# --- 7. 탭 3: AI 질문 ---
+with tab3:
     st.markdown("### 🤖 나만의 영어 과외 선생님")
     st.markdown("<p style='color:#94a3b8; margin-top:-10px;'>영어 표현의 뜻, 어원, 뉘앙스 등 궁금한 건 뭐든 물어보세요!</p>", unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
@@ -610,8 +610,8 @@ with tab5:
                     db.collection('ai_questions').document(q['id']).delete()
                     st.rerun()
 
-# --- 6. 탭 4: 플래시카드 게임 ---
-with tab4:
+# --- 6. 탭 5: 플래시카드 게임 ---
+with tab5:
     cards_ref2 = db.collection('opic_cards').stream()
     all_cards = [{'id': doc.id, **doc.to_dict()} for doc in cards_ref2]
 
