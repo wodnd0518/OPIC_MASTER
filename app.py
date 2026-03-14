@@ -298,7 +298,7 @@ st.markdown("<p style='color:#94a3b8; margin-top:-10px; margin-bottom:20px;'>OPI
 
 render_streak()
 
-tab1, tab2, tab3, tab4 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "📂 내 단어장", "🎮 플래시카드 게임"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "📂 내 단어장", "🎮 플래시카드 게임", "🤖 AI 질문"])
 
 # --- 3. 탭 1: 핵심 표현 추출 ---
 with tab1:
@@ -541,6 +541,74 @@ with tab3:
                     if st.button("삭제", key=f"del_{c['id']}"):
                         db.collection('opic_cards').document(c['id']).delete()
                         st.rerun()
+
+# --- 7. 탭 5: AI 질문 ---
+with tab5:
+    st.markdown("### 🤖 나만의 영어 과외 선생님")
+    st.markdown("<p style='color:#94a3b8; margin-top:-10px;'>영어 표현의 뜻, 어원, 뉘앙스 등 궁금한 건 뭐든 물어보세요!</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    question_input = st.text_area(
+        "질문을 입력하세요",
+        placeholder="예: 'get cold feet'가 왜 긴장한다는 뜻으로 쓰여요?\n예: 'literally'를 강조할 때 쓰는 건 문법적으로 맞나요?",
+        height=100,
+        key="ai_question_input"
+    )
+
+    if st.button("질문하기 ✨", key="ask_btn", use_container_width=True):
+        if question_input.strip():
+            with st.spinner("선생님이 답변을 작성 중이에요..."):
+                tutor_prompt = f"""
+                너는 한국인 영어 학습자의 전담 원어민 영어 과외 선생님이야.
+                학생이 OPIC IH/AL을 목표로 하고 있고, 영어 표현에 진심으로 관심이 많아.
+
+                학생 질문: {question_input}
+
+                아래 스타일로 답변해줘:
+                - 친근하고 따뜻한 선생님 말투 (한국어로)
+                - 핵심 답변을 먼저, 그 다음 상세 설명
+                - 어원이나 배경이 있으면 꼭 포함 (흥미롭게)
+                - 실제 원어민이 쓰는 예문 1~2개 포함
+                - 비슷한 표현이나 주의할 점도 간단히 언급
+                - 너무 길지 않게, 핵심만 명확하게
+                """
+                try:
+                    resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "You are a warm, knowledgeable English tutor for Korean learners. Always respond in Korean with clear, engaging explanations."},
+                            {"role": "user", "content": tutor_prompt}
+                        ]
+                    )
+                    answer = resp.choices[0].message.content.strip()
+                    db.collection('ai_questions').add({
+                        'question': question_input.strip(),
+                        'answer': answer,
+                        'created_at': firestore.SERVER_TIMESTAMP
+                    })
+                    record_activity()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"오류가 발생했습니다: {e}")
+        else:
+            st.warning("질문을 입력해주세요.")
+
+    # 누적된 Q&A 목록
+    questions_ref = db.collection('ai_questions').order_by('created_at', direction=firestore.Query.DESCENDING).stream()
+    questions_list = [{'id': doc.id, **doc.to_dict()} for doc in questions_ref]
+
+    if questions_list:
+        st.divider()
+        st.markdown(f"<p style='color:#94a3b8;'>총 {len(questions_list)}개의 질문</p>", unsafe_allow_html=True)
+        for q in questions_list:
+            with st.expander(f"Q. {q['question']}"):
+                st.markdown(
+                    f"<div style='padding:12px;background:rgba(124,58,237,0.08);border-left:3px solid #7c3aed;border-radius:8px;color:#e2e8f0;line-height:1.7;white-space:pre-wrap;'>{q['answer']}</div>",
+                    unsafe_allow_html=True
+                )
+                if st.button("삭제", key=f"qdel_{q['id']}"):
+                    db.collection('ai_questions').document(q['id']).delete()
+                    st.rerun()
 
 # --- 6. 탭 4: 플래시카드 게임 ---
 with tab4:
