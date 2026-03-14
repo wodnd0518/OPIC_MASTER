@@ -110,14 +110,18 @@ def render_streak():
 
     streak = data.get('streak_count', 0)
     activity_counts = data.get('activity_counts', {})
+    legacy_dates = set(data.get('activity_dates', []))  # 이전 형식 호환
     today = get_today_kst()
     # 일요일 시작 (weekday: Mon=0 ... Sun=6)
     sunday = today - timedelta(days=(today.weekday() + 1) % 7)
     days_kr = ['일', '월', '화', '수', '목', '금', '토']
 
-    # 요일별 활성 여부 미리 계산
+    # 요일별 활성 여부 미리 계산 (새 형식 OR 구 형식 모두 인정)
     day_dates = [sunday + timedelta(days=i) for i in range(7)]
-    is_active_list = [activity_counts.get(str(d), 0) >= STREAK_THRESHOLD for d in day_dates]
+    is_active_list = [
+        activity_counts.get(str(d), 0) >= STREAK_THRESHOLD or str(d) in legacy_dates
+        for d in day_dates
+    ]
     today_count = activity_counts.get(str(today), 0)
 
     week_html = ""
