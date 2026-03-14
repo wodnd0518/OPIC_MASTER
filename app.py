@@ -65,36 +65,42 @@ KST = timezone(timedelta(hours=9))
 def get_today_kst():
     return datetime.now(KST).date()
 
+STREAK_THRESHOLD = 3  # 하루에 이 횟수 이상 액션해야 완료로 인정
+
 def record_activity():
-    """액션 발생 시 스트릭 갱신. 오늘 이미 기록됐으면 스킵."""
+    """액션 발생 시 카운트 증가. 오늘 첫 3번째 액션일 때만 스트릭 갱신."""
     today = str(get_today_kst())
     doc_ref = db.collection('user_data').document('streak')
     doc = doc_ref.get()
     data = doc.to_dict() if doc.exists else {}
 
-    activity_dates = data.get('activity_dates', [])
-    if today in activity_dates:
-        return  # 오늘 이미 기록됨
+    activity_counts = data.get('activity_counts', {})
+    prev_count = activity_counts.get(today, 0)
+    activity_counts[today] = prev_count + 1
 
-    last_date_str = data.get('last_active_date')
     streak = data.get('streak_count', 0)
+    last_date_str = data.get('last_active_date')
 
-    if last_date_str is None:
-        streak = 1
-    else:
-        diff = (date.fromisoformat(today) - date.fromisoformat(last_date_str)).days
-        if diff == 1:
-            streak += 1
-        elif diff > 1:
+    # 오늘 처음으로 3번째 액션을 완료한 순간에만 스트릭 계산
+    if prev_count + 1 == STREAK_THRESHOLD:
+        if last_date_str is None:
             streak = 1
+        else:
+            diff = (date.fromisoformat(today) - date.fromisoformat(last_date_str)).days
+            if diff == 1:
+                streak += 1
+            elif diff > 1:
+                streak = 1
+        last_date_str = today
 
-    activity_dates.append(today)
-    activity_dates = activity_dates[-60:]  # 최근 60일만 보관
+    # 60일 이전 데이터 정리
+    cutoff = str(get_today_kst() - timedelta(days=60))
+    activity_counts = {k: v for k, v in activity_counts.items() if k >= cutoff}
 
     doc_ref.set({
         'streak_count': streak,
-        'last_active_date': today,
-        'activity_dates': activity_dates
+        'last_active_date': last_date_str,
+        'activity_counts': activity_counts
     })
 
 def render_streak():
@@ -103,53 +109,78 @@ def render_streak():
     data = doc.to_dict() if doc.exists else {}
 
     streak = data.get('streak_count', 0)
-    activity_dates = set(data.get('activity_dates', []))
+    activity_counts = data.get('activity_counts', {})
     today = get_today_kst()
     monday = today - timedelta(days=today.weekday())
     days_kr = ['월', '화', '수', '목', '금', '토', '일']
 
+    # 요일별 활성 여부 미리 계산
+    day_dates = [monday + timedelta(days=i) for i in range(7)]
+    is_active_list = [activity_counts.get(str(d), 0) >= STREAK_THRESHOLD for d in day_dates]
+    today_count = activity_counts.get(str(today), 0)
+
     week_html = ""
-    for i in range(7):
-        day = monday + timedelta(days=i)
-        day_str = str(day)
+    for i, day in enumerate(day_dates):
         is_today = (day == today)
-        is_active = day_str in activity_dates
+        is_active = is_active_list[i]
 
+        # 왼쪽/오른쪽 연결선 색상 (양쪽 노드 모두 active일 때만 초록)
+        left_color  = "#22c55e" if (i > 0 and is_active and is_active_list[i-1]) else "rgba(255,255,255,0.12)"
+        right_color = "#22c55e" if (i < 6 and is_active and is_active_list[i+1]) else "rgba(255,255,255,0.12)"
+        left_vis  = "visibility:hidden;" if i == 0 else ""
+        right_vis = "visibility:hidden;" if i == 6 else ""
+
+        # 원 스타일
         if is_active:
-            circle = "<div style='width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#16a34a);display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:white;flex-shrink:0;'>✓</div>"
+            c_style  = "background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-size:0.8rem;border:none;"
+            c_content = "✓"
+        elif is_today and today_count > 0:
+            c_style  = "border:2px dashed #f59e0b;color:#fbbf24;font-size:0.6rem;font-weight:700;"
+            c_content = f"{today_count}/3"
         elif is_today:
-            circle = "<div style='width:32px;height:32px;border-radius:50%;border:2px dashed #7c3aed;flex-shrink:0;'></div>"
+            c_style  = "border:2px dashed #7c3aed;"
+            c_content = ""
         else:
-            circle = "<div style='width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;'></div>"
+            c_style  = "border:2px solid rgba(255,255,255,0.15);"
+            c_content = ""
 
-        today_bg = "background:rgba(124,58,237,0.15);border-radius:8px;" if is_today else ""
+        today_bg = "background:rgba(124,58,237,0.1);border-radius:8px;" if is_today else ""
+
         week_html += (
-            f"<div style='display:flex;flex-direction:column;align-items:center;gap:4px;"
-            f"padding:5px 4px;flex:1;min-width:0;{today_bg}'>"
-            f"<span style='color:#94a3b8;font-size:0.7rem;font-weight:500;'>{days_kr[i]}</span>"
-            f"{circle}</div>"
+            f"<div style='flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:4px 0;{today_bg}'>"
+            f"  <span style='color:#94a3b8;font-size:0.68rem;font-weight:500;'>{days_kr[i]}</span>"
+            f"  <div style='display:flex;align-items:center;width:100%;'>"
+            f"    <div style='flex:1;height:2px;background:{left_color};{left_vis}'></div>"
+            f"    <div style='width:28px;height:28px;border-radius:50%;flex-shrink:0;"
+            f"display:flex;align-items:center;justify-content:center;{c_style}'>{c_content}</div>"
+            f"    <div style='flex:1;height:2px;background:{right_color};{right_vis}'></div>"
+            f"  </div>"
+            f"</div>"
         )
 
+    today_done = today_count >= STREAK_THRESHOLD
     if streak == 0:
         title = "아직 스트릭이 없어요"
-        sub = "오늘 첫 액션을 완료해보세요!"
+        sub   = f"오늘 {STREAK_THRESHOLD}번 액션하면 불꽃이 켜져요! ({today_count}/{STREAK_THRESHOLD})"
         fire_color = "#64748b"
+        fire_filter = "grayscale(1) opacity(0.4)"
     else:
         title = f"{streak}일 연속 학습 중!"
-        sub = "오늘도 완료하면 유지돼요" if str(today) not in activity_dates else "오늘 완료! 내일도 이어가요 💪"
+        sub   = f"오늘 {today_count}/{STREAK_THRESHOLD} 완료! 조금만 더요 🔥" if not today_done else "오늘 완료! 내일도 이어가요 💪"
         fire_color = "#f97316"
+        fire_filter = f"drop-shadow(0 0 10px {fire_color})"
 
     st.markdown(f"""
     <div style='background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);
                 border-radius:16px;padding:14px 16px;margin-bottom:24px;box-sizing:border-box;'>
         <div style='display:flex;align-items:center;gap:10px;margin-bottom:12px;'>
-            <span style='font-size:1.7rem;line-height:1;filter:drop-shadow(0 0 8px {fire_color});flex-shrink:0;'>🔥</span>
+            <span style='font-size:1.8rem;line-height:1;filter:{fire_filter};flex-shrink:0;'>🔥</span>
             <div style='min-width:0;'>
                 <div style='color:#e2e8f0;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{title}</div>
                 <div style='color:#94a3b8;font-size:0.75rem;'>{sub}</div>
             </div>
         </div>
-        <div style='display:flex;justify-content:space-between;align-items:flex-end;width:100%;'>
+        <div style='display:flex;align-items:center;width:100%;'>
             {week_html}
         </div>
     </div>
