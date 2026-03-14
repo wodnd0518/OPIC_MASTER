@@ -4,6 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import random
+import re
 from datetime import datetime, timezone, timedelta, date
 
 # --- 1. 초기 설정 (Firebase & OpenAI) ---
@@ -606,10 +607,8 @@ with tab3:
         st.markdown(f"<p style='color:#94a3b8;'>총 {len(questions_list)}개의 질문</p>", unsafe_allow_html=True)
         for q in questions_list:
             with st.expander(f"Q. {q['question']}"):
-                st.markdown(
-                    f"<div style='padding:12px;background:rgba(124,58,237,0.08);border-left:3px solid #7c3aed;border-radius:8px;color:#e2e8f0;line-height:1.7;white-space:pre-wrap;'>{q['answer']}</div>",
-                    unsafe_allow_html=True
-                )
+                cleaned = re.sub(r'\n{3,}', '\n\n', q['answer'].strip())
+                st.markdown(cleaned)
                 if st.button("삭제", key=f"qdel_{q['id']}"):
                     db.collection('ai_questions').document(q['id']).delete()
                     st.rerun()
