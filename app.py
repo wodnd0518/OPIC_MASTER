@@ -750,8 +750,9 @@ with tab6:
                     )
                 with col_add:
                     if st.button("＋ 추가", key=f"add_{item['id']}", use_container_width=True):
-                        # 내 단어장(opic_cards)에 카드로 추가
-                        new_card = {
+                        # opic_cards 필드 구조에 맞춰 추가
+                        db.collection('opic_cards').add({
+                            'topic': 'OPIc Speak',
                             'word': word,
                             'meaning': '',
                             'sentence': context or '',
@@ -760,10 +761,9 @@ with tab6:
                             'created_at': firestore.SERVER_TIMESTAMP,
                             'known_at': None,
                             'review_flagged_at': None,
-                            'source': 'opic-speak',
-                        }
-                        db.collection('opic_cards').add(new_card)
+                        })
                         db.collection('received_words').document(item['id']).delete()
+                        record_activity()
                         st.success(f'"{word}" 단어장에 추가됐어요!')
                         st.rerun()
                 with col_del:
