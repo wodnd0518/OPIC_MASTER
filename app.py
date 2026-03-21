@@ -303,7 +303,7 @@ st.markdown("<p style='color:#94a3b8; margin-top:-10px; margin-bottom:20px;'>OPI
 
 render_streak()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "🤖 AI 질문", "📂 내 단어장", "🎮 플래시카드 게임"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["✦ 표현 배우기", "🔍 검색하기", "🤖 AI 질문", "📂 내 단어장", "🎮 플래시카드 게임", "📥 받은 단어"])
 
 # --- 3. 탭 1: 핵심 표현 추출 ---
 with tab1:
@@ -708,3 +708,66 @@ with tab5:
                                     st.session_state['game_idx'] = (idx + 1) % len(deck)
                                     st.session_state['game_show_answer'] = False
                                     st.rerun()
+
+# --- 7. 탭 6: OPIc Speak에서 받은 단어 ---
+with tab6:
+    st.markdown("### 📥 OPIc Speak에서 받은 단어")
+    st.caption("OPIc Speak 앱에서 Send한 단어들입니다. 내 단어장에 추가하거나 삭제할 수 있어요.")
+
+    received = db.collection('received_words') \
+        .order_by('sent_at', direction=firestore.Query.DESCENDING) \
+        .limit(50) \
+        .stream()
+    received_list = []
+    for doc in received:
+        d = doc.to_dict()
+        d['id'] = doc.id
+        received_list.append(d)
+
+    if not received_list:
+        st.info("아직 받은 단어가 없어요. OPIc Speak에서 단어를 보내보세요!")
+    else:
+        for item in received_list:
+            word = item.get('word', '')
+            context = item.get('context', '')
+            sent_at = item.get('sent_at')
+            date_str = ''
+            if sent_at:
+                try:
+                    dt = sent_at.replace(tzinfo=timezone.utc).astimezone(KST)
+                    date_str = dt.strftime('%m/%d %H:%M')
+                except Exception:
+                    pass
+
+            with st.container():
+                col_info, col_add, col_del = st.columns([4, 1, 1])
+                with col_info:
+                    st.markdown(
+                        f"**{word}**"
+                        + (f" <span style='color:#64748b;font-size:0.85rem;'>— {context}</span>" if context else "")
+                        + (f" <span style='color:#334155;font-size:0.78rem;'> · {date_str}</span>" if date_str else ""),
+                        unsafe_allow_html=True,
+                    )
+                with col_add:
+                    if st.button("＋ 추가", key=f"add_{item['id']}", use_container_width=True):
+                        # 내 단어장(opic_cards)에 카드로 추가
+                        new_card = {
+                            'word': word,
+                            'meaning': '',
+                            'sentence': context or '',
+                            'sentence_meaning': '',
+                            'synonym_sentence': '',
+                            'created_at': firestore.SERVER_TIMESTAMP,
+                            'known_at': None,
+                            'review_flagged_at': None,
+                            'source': 'opic-speak',
+                        }
+                        db.collection('opic_cards').add(new_card)
+                        db.collection('received_words').document(item['id']).delete()
+                        st.success(f'"{word}" 단어장에 추가됐어요!')
+                        st.rerun()
+                with col_del:
+                    if st.button("삭제", key=f"del_{item['id']}", use_container_width=True):
+                        db.collection('received_words').document(item['id']).delete()
+                        st.rerun()
+                st.divider()
