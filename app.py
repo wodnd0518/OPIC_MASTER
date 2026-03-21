@@ -503,7 +503,7 @@ with tab4:
                     </style>
                     """, unsafe_allow_html=True)
 
-                topic_badge = f"<span style='background:rgba(124,58,237,0.2); color:#a78bfa; padding:2px 8px; border-radius:6px; font-size:0.8rem;'>{c['topic']}</span>"
+                topic_badge = f"<span style='background:rgba(124,58,237,0.2); color:#a78bfa; padding:2px 8px; border-radius:6px; font-size:0.8rem;'>{c.get('topic', '')}</span>"
                 st.markdown(topic_badge + badge_html, unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.info(f"**예문:** {c['sentence']}\n\n*{c.get('sentence_meaning', '')}*")
